@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Analysis of RNA-seq data</title>
+    <meta charset="utf-8">
+    <meta name="author" content="Alexey Sergushichev" />
+    <meta name="date" content="2019-07-30" />
+    <link href="libs/remark-css-0.0.1/default.css" rel="stylesheet" />
+    <link rel="stylesheet" href="theme.css" type="text/css" />
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+# Analysis of RNA-seq data
+## From gene expression table to pathway analysis
+### Alexey Sergushichev
+### 2019-07-30
+
+---
+
+
+# Plan
+
+* Part I: simple pipeline
+* Part II: more options for analysis
+    
+---
+
+class: center, middle
+
+# Part II
+
+---
+
+## The paper
+
+.pull-left[
+
+&lt;img src="images/paper.png" height="450px"&gt;
+]
+
+.pull-right[
+&lt;img src="images/paper_fig.png" height="450px"&gt;
+]
+
+---
+
+    
+## The data links should be in the methods section
+
+&lt;img src="images/paper_methods.png" height="450px"&gt;
+
+
+---
+
+## Gene Expression Omnibus: the most common repository of gene expression
+
+* Go to https://www.ncbi.nlm.nih.gov/geo/ 
+
+&lt;img src="images/geo_main.png" height="450px"&gt;
+
+---
+
+## Searching for the datasets
+
+* Go to https://www.ncbi.nlm.nih.gov/gds 
+* Search for "heart regeneration"
+
+&lt;img src="images/geo_search.png" height="400px"&gt;
+
+
+---
+
+## GEO entry
+
+* Go to https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE95755
+
+.pull-left[
+    
+&lt;img src="images/geo_entry.png" height="450px"&gt;
+]
+
+.pull-right[
+&lt;img src="images/geo_supp.png" height="450px"&gt;
+]
+
+---
+
+## Downloading raw data
+
+* Follow "SRA Run Selector" link
+* `fastq-dump` program can be used to download FASTQ files by SRX/SRR identifiers
+    
+&lt;img src="images/sra_selector.png" height="400px"&gt;    
+
+---
+
+## ARCHS4 project: many datasets precomputed with kallisto
+
+* https://amp.pharm.mssm.edu/archs4/ 
+
+&lt;img src="images/archs4.png" height="400px"&gt;
+
+---
+
+## Working with ARCHS4 data
+
+* Go to https://amp.pharm.mssm.edu/archs4/download.html 
+* Go to https://amp.pharm.mssm.edu/archs4/help.html 
+
+---
+
+## Working with ARCHS4 via Phantasus
+
+* Go to https://genome.ifmo.ru/phantasus/
+* Choose a file/GEO dataset/GSE95755
+
+&lt;img src="images/phantasus_dataset.png" height="400px"&gt;
+
+---
+
+## Save dataset
+
+* File/Save Dataset, enter "gse95755.gct"
+
+&lt;img src="images/phantasus_save.png" height="400px"&gt;
+
+--- 
+
+## Back to R
+
+* Loading packages
+
+
+```r
+source("functions.R")
+library(DESeq2)
+library(ggrepel)
+library(pheatmap)
+library(msigdbr)
+```
+
+## Loading dataset
+
+* Copy `gse95755.gct` into `data` folder
+
+
+```r
+es &lt;- read.gct("data/gse95755.gct")
+```
+
+---
+
+## Selecting only cardiomyocytes
+
+
+```r
+es &lt;- es[, es$`cell type` == "Cardiomyocyte"]
+es$condition &lt;- gsub("_.*", "", es$title)
+es
+```
+
+```
+## ExpressionSet (storageMode: lockedEnvironment)
+## assayData: 32544 features, 16 samples 
+##   element names: exprs 
+## protocolData: none
+## phenoData
+##   sampleNames: ShamP1_Myo_1 ShamP1_Myo_2 ... MIP56_Myo_4 (16
+##     total)
+##   varLabels: title geo_accession ... condition (6 total)
+##   varMetadata: labelDescription
+## featureData
+##   featureNames: 0610007P14Rik 0610009B22Rik ... mt-Nd6 (32544
+##     total)
+##   fvarLabels: Gene symbol
+##   fvarMetadata: labelDescription
+## experimentData: use 'experimentData(object)'
+## Annotation:
+```
+
+---
+
+## Getting normalized data
+
+
+```r
+dds &lt;- DESeqDataSetFromMatrix(exprs(es), pData(es), ~condition)
+```
+
+```
+## Warning in DESeqDataSet(se, design = design, ignoreRank): some variables in
+## design formula are characters, converting to factors
+```
+
+```r
+rld &lt;- rlog(dds)
+es.norm &lt;- es
+exprs(es.norm) &lt;- assay(rld)
+```
+
+---
+
+## Doing PCA plot
+
+
+
+```r
+plotPCA(rld) + geom_text_repel(aes(label=name)) + theme_classic()
+```
+
+![](rnaseq2_files/figure-html/unnamed-chunk-4-1.png)&lt;!-- --&gt;
+
+---
+
+## Checking library depth
+
+
+```r
+apply(exprs(es), 2, sum)
+```
+
+```
+##  ShamP1_Myo_1  ShamP1_Myo_2  ShamP1_Myo_3  ShamP1_Myo_4 ShamP56_Myo_1 
+##      26133518      12847113      28687341      26691252      15390463 
+## ShamP56_Myo_2 ShamP56_Myo_3 ShamP56_Myo_4    MIP1_Myo_1    MIP1_Myo_2 
+##      20792184      16276892      26610120      26616459      27157022 
+##    MIP1_Myo_3    MIP1_Myo_4   MIP56_Myo_1   MIP56_Myo_2   MIP56_Myo_3 
+##      27610474      22457901      22229136      23736799      28952974 
+##   MIP56_Myo_4 
+##      22226073
+```
+
+---
+
+## Exercise
+
+* Do differential expression for ShamP1 vs MIP1
+
+---
+
+## Generalized linear models for gene expression
+
+&lt;img src="images/limma.png" height="400px"&gt;
+
+.footnote[
+https://academic.oup.com/nar/article/43/7/e47/2414268
+]
+
+---
+
+## Common complex designs: batch correction
+
+* `design = ~ batch + condition` -- when there are batches in the dataset
+* `design = ~ donor + condition` -- for patient samples
+
+---
+
+## Clustering
+
+
+```r
+es.norm.top &lt;- es.norm[head(order(apply(exprs(es.norm), 1, mean), 
+                                  decreasing = TRUE), 6000), ]
+scaledExprs &lt;- t(scale(t(exprs(es.norm.top))))
+set.seed(42)
+km &lt;- kmeans(scaledExprs, 12)
+str(km)
+```
+
+```
+## List of 9
+##  $ cluster     : Named int [1:6000] 8 4 4 8 8 4 4 4 8 4 ...
+##   ..- attr(*, "names")= chr [1:6000] "mt-Co1" "mt-Co3" "Myh6" "Ttn" ...
+##  $ centers     : num [1:12, 1:16] -0.9616 0.555 0.0582 -0.6488 -0.613 ...
+##   ..- attr(*, "dimnames")=List of 2
+##   .. ..$ : chr [1:12] "1" "2" "3" "4" ...
+##   .. ..$ : chr [1:16] "ShamP1_Myo_1" "ShamP1_Myo_2" "ShamP1_Myo_3" "ShamP1_Myo_4" ...
+##  $ totss       : num 85793
+##  $ withinss    : num [1:12] 1704 1282 1634 1611 1466 ...
+##  $ tot.withinss: num 19428
+##  $ betweenss   : num 66365
+##  $ size        : int [1:12] 1057 184 404 1200 171 341 643 447 194 854 ...
+##  $ iter        : int 6
+##  $ ifault      : int 0
+##  - attr(*, "class")= chr "kmeans"
+```
+       
+---
+
+## Heatmap of k-means centers
+
+
+```r
+pheatmap(km$centers, 
+      cluster_cols = FALSE, cluster_rows = FALSE)
+```
+
+![](rnaseq2_files/figure-html/unnamed-chunk-7-1.svg)&lt;!-- --&gt;
+
+---
+
+## Heatmap of k-means clusters (1)
+
+
+```r
+mat &lt;- exprs(es.norm.top)[order(km$cluster, sample.int(nrow(es.norm.top))), ]
+mat &lt;- t(apply(mat, 1, scales::rescale))
+grouping &lt;- ceiling(seq_len(nrow(mat)) / nrow(mat) * 1000)
+aggr &lt;- Matrix.utils::aggregate.Matrix(mat, groupings=grouping, fun="mean")
+rownames(aggr) &lt;- rownames(mat)[!duplicated(grouping)]
+annotation_row &lt;- data.frame(cluster=paste0("c", km$cluster), row.names = names(km$cluster))
+```
+
+---
+
+## Heatmap of k-means clusters (2)
+
+
+```r
+pheatmap(aggr, 
+         cluster_rows = FALSE, cluster_cols = FALSE, 
+         annotation_row = annotation_row,
+         show_rownames = FALSE)
+```
+
+![](rnaseq2_files/figure-html/unnamed-chunk-9-1.svg)&lt;!-- --&gt;
+
+---
+
+## Heatmap of the cluster
+
+
+```r
+genes &lt;- names(which(km$cluster==5))
+heatmap_table &lt;- exprs(es.norm)[genes, ]
+heatmap_table &lt;- t(apply(heatmap_table, 1, scales::rescale))
+pheatmap(heatmap_table, show_rownames = FALSE,
+         cluster_rows = FALSE, cluster_cols = FALSE)
+```
+
+![](rnaseq2_files/figure-html/unnamed-chunk-10-1.svg)&lt;!-- --&gt;
+
+---
+
+## Pathway analysis with hypergeometric test
+
+* Also known as Fisher's exact test
+
+&lt;img src="images/hyper_test.png" height="450px"&gt;
+
+.footnote[
+https://slideplayer.com/slide/10405164/
+]
+
+---
+
+## Getting pathways
+
+
+```r
+m_df &lt;- msigdbr(species = "Mus musculus", category = "H")
+pathways &lt;- split(m_df$gene_symbol, m_df$gs_name)
+pathways &lt;- lapply(pathways, unique)
+universe &lt;- rownames(es.norm.top)
+```
+
+---
+
+## Doing the test
+
+
+```r
+hyp &lt;- hyperTest(genes, pathways, universe)
+head(hyp)
+```
+
+```
+##                                       pathway         pval  k   K
+## 1:   HALLMARK_REACTIVE_OXIGEN_SPECIES_PATHWAY 0.0002866982  6  33
+## 2: HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION 0.0006498261 10 103
+## 3:           HALLMARK_TNFA_SIGNALING_VIA_NFKB 0.0013357812  9  94
+## 4:             HALLMARK_XENOBIOTIC_METABOLISM 0.0056497681  7  76
+## 5:             HALLMARK_INFLAMMATORY_RESPONSE 0.0133391572  5  50
+## 6:                           HALLMARK_HYPOXIA 0.0135136284  8 111
+##          padj
+## 1: 0.01433491
+## 2: 0.01624565
+## 3: 0.02226302
+## 4: 0.07062210
+## 5: 0.11169104
+## 6: 0.11169104
+```
+
+---
+
+## MSigDB
+
+* Go to http://software.broadinstitute.org/gsea/msigdb/genesets.jsp 
+* Click "Investigate gene sets"
+* Enter "alsergbox@gmail.com@ as login (regiester later, it's free)
+* Print the genes in R with `paste(genes, collapse=" ")` and copy-paste them into
+MSigDB
+* Check "H: hallmark gene sets" and "CP: Canonical pathways" options
+* Click "Compute overlaps"
+* Beware of the universe!
+
+---
+
+## The end
+    </textarea>
+<script src="libs/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+"highlightStyle": "github",
+"highlightLines": true,
+"countIncrementalSlides": false,
+"ratio": "16:10"
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function() {
+  var d = document, s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})();</script>
+
+<script>
+(function() {
+  var i, text, code, codes = document.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+})();
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://cdn.bootcss.com/mathjax/2.7.1/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>
