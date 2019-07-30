@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Analysis of RNA-seq data</title>
+    <meta charset="utf-8">
+    <meta name="author" content="Alexey Sergushichev" />
+    <meta name="date" content="2019-07-30" />
+    <link href="libs/remark-css-0.0.1/default.css" rel="stylesheet" />
+    <link rel="stylesheet" href="theme.css" type="text/css" />
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+# Analysis of RNA-seq data
+## From gene expression table to pathway analysis
+### Alexey Sergushichev
+### 2019-07-30
+
+---
+
+
+# Plan
+
+* Part I: simple pipeline
+* Part II: more options for analysis
+
+---
+
+class: center, middle
+
+# Part I
+
+---
+
+## Creating project in RStudio
+
+* File/New Project/New Directory/Empty Project
+* Call it `rnaseq` or something else
+* Crate file `hello.R`
+* Write `message("Hello world")`
+* Ctrl-Enter will copy the line to the console and will run it
+
+---
+
+## Configuring layout
+
+* Tools/Global options/Pane layout
+
+&lt;img src="images/rstudio_layout.png" height="500px"&gt;
+
+---
+
+## Configuring version control system
+
+* Tools/Version Control/Project Setup
+* Won't be doing it now, but it is very helpful to keep track of changes
+
+---
+
+## Example of the project structure
+
+* `/work` -- work files (images, tables, ...)
+* `/data` -- the input data
+* `/` -- scripts (or in `/scripts`)
+* `/functions.R` -- helper functions
+* `/requirements.R` -- list of requirements for the project
+
+
+---
+
+## R Markdown
+
+* File/New File/R Markdown
+* Knit
+* This presentation is done in R Markdown with `xaringan` package
+
+
+---
+
+## Copying the files
+
+
+* Copy `functions.R` and `rnaseq1.R` into the project root folder
+* Create folder `data`
+* Copy `myo_p56_raw.gct` into data `data`
+* Open `rnaseq.R` and walking over it step by step
+
+---
+
+## The paper
+
+.pull-left[
+
+&lt;img src="images/paper.png" height="450px"&gt;
+]
+
+.pull-right[
+&lt;img src="images/paper_fig.png" height="450px"&gt;
+]
+
+---
+
+## The data
+
+* Open `data/myo_p56_raw.gct` in Excel/Calc/Notepad
+
+&lt;img src="images/dataset_excel.png" height="400px"&gt;
+
+
+---
+
+## Perliminaries
+
+* Loading helper functions (`read.gct`).
+
+
+```r
+source("functions.R")
+library(DESeq2)
+library(ggplot2)
+library(data.table)
+library(ggrepel)
+library(AnnotationDbi)
+library(org.Mm.eg.db)
+library(pheatmap)
+library(msigdbr)
+library(fgsea)
+```
+
+---
+
+## Reading the data
+
+
+* Loading the dataset from file
+
+
+```r
+es &lt;- read.gct("data/myo_p56_raw.gct")
+```
+
+---
+
+## ExpressionSet object
+
+
+```r
+es
+```
+
+```
+## ExpressionSet (storageMode: lockedEnvironment)
+## assayData: 32544 features, 8 samples 
+##   element names: exprs 
+## protocolData: none
+## phenoData
+##   sampleNames: ShamP56_Myo_1 ShamP56_Myo_2 ... MIP56_Myo_4 (8
+##     total)
+##   varLabels: title geo_accession ... treatment (5 total)
+##   varMetadata: labelDescription
+## featureData
+##   featureNames: 0610007P14Rik 0610009B22Rik ... mt-Nd6 (32544
+##     total)
+##   fvarLabels: Gene symbol
+##   fvarMetadata: labelDescription
+## experimentData: use 'experimentData(object)'
+## Annotation:
+```
+
+
+---
+
+## ExpressionSet methods
+
+* A single place to store both expression data and metadata
+* `exprs(es)` – expression matrix
+* `pData(es)` or `phenoData(es)` – sample metadata
+* `fData(es)` or `featureData(es)` – gene metadata
+* `experimentData(es)` – experiment metadata
+
+---
+
+## Looking at expression values
+
+
+```r
+head(exprs(es))
+```
+
+```
+##               ShamP56_Myo_1 ShamP56_Myo_2 ShamP56_Myo_3 ShamP56_Myo_4
+## 0610007P14Rik            34            45            48            75
+## 0610009B22Rik           218           302           235           385
+## 0610009L18Rik            92           125            97           218
+## 0610009O20Rik          2434          2906          2419          3874
+## 0610010F05Rik           128           231           137           268
+## 0610010K14Rik           113           162           138           177
+##               MIP56_Myo_1 MIP56_Myo_2 MIP56_Myo_3 MIP56_Myo_4
+## 0610007P14Rik          97          62          95          83
+## 0610009B22Rik          90         277         378         162
+## 0610009L18Rik         124         210         122         107
+## 0610009O20Rik        3019        3457        2933        2777
+## 0610010F05Rik          70         137         688         118
+## 0610010K14Rik         254         210         178         156
+```
+
+---
+
+## Looking at gene metadata
+
+* Nothing interesting here yet:
+
+
+```r
+head(fData(es))
+```
+
+```
+##                 Gene symbol
+## 0610007P14Rik 0610007P14Rik
+## 0610009B22Rik 0610009B22Rik
+## 0610009L18Rik 0610009L18Rik
+## 0610009O20Rik 0610009O20Rik
+## 0610010F05Rik 0610010F05Rik
+## 0610010K14Rik 0610010K14Rik
+```
+
+---
+
+## Looking at sample metadata
+
+
+```r
+pData(es)
+```
+
+```
+##                       title geo_accession background mouse strain
+## ShamP56_Myo_1 ShamP56_Myo_1    GSM2525483                     CD1
+## ShamP56_Myo_2 ShamP56_Myo_2    GSM2525487                     CD1
+## ShamP56_Myo_3 ShamP56_Myo_3    GSM2525491                     CD1
+## ShamP56_Myo_4 ShamP56_Myo_4    GSM2525495                     CD1
+## MIP56_Myo_1     MIP56_Myo_1    GSM2525515                     CD1
+## MIP56_Myo_2     MIP56_Myo_2    GSM2525519                     CD1
+## MIP56_Myo_3     MIP56_Myo_3    GSM2525523                     CD1
+## MIP56_Myo_4     MIP56_Myo_4    GSM2525527                     CD1
+##                   cell type             treatment
+## ShamP56_Myo_1 Cardiomyocyte        Sham-operation
+## ShamP56_Myo_2 Cardiomyocyte        Sham-operation
+## ShamP56_Myo_3 Cardiomyocyte        Sham-operation
+## ShamP56_Myo_4 Cardiomyocyte        Sham-operation
+## MIP56_Myo_1   Cardiomyocyte Myocardial Infarction
+## MIP56_Myo_2   Cardiomyocyte Myocardial Infarction
+## MIP56_Myo_3   Cardiomyocyte Myocardial Infarction
+## MIP56_Myo_4   Cardiomyocyte Myocardial Infarction
+```
+
+---
+
+## Quick access to sample metadata
+
+
+```r
+str(es$treatment)
+```
+
+```
+##  chr [1:8] "Sham-operation" "Sham-operation" "Sham-operation" ...
+```
+
+
+---
+
+## Filling `condition` 
+
+* Useful to have a short name for conditions
+* Quick dirty way to fill it:
+
+
+```r
+es$condition &lt;- c(rep("ShamP56", 4), rep("MIP56", 4))
+```
+
+* Better way with renaming:
+
+```r
+es$condition &lt;- gsub("_.*", "", es$title)
+```
+
+
+```r
+es$condition
+```
+
+```
+## [1] "ShamP56" "ShamP56" "ShamP56" "ShamP56" "MIP56"   "MIP56"   "MIP56"  
+## [8] "MIP56"
+```
+
+---
+
+## Loading data into DESeq
+
+
+
+
+```r
+dds &lt;- DESeqDataSetFromMatrix(exprs(es), pData(es), ~condition)
+```
+
+```
+## converting counts to integer mode
+```
+
+```
+## Warning in DESeqDataSet(se, design = design, ignoreRank): some variables in
+## design formula are characters, converting to factors
+```
+
+```r
+dds
+```
+
+```
+## class: DESeqDataSet 
+## dim: 32544 8 
+## metadata(1): version
+## assays(1): counts
+## rownames(32544): 0610007P14Rik 0610009B22Rik ... mt-Nd5 mt-Nd6
+## rowData names(0):
+## colnames(8): ShamP56_Myo_1 ShamP56_Myo_2 ... MIP56_Myo_3
+##   MIP56_Myo_4
+## colData names(6): title geo_accession ... treatment condition
+```
+
+---
+
+## Principal component analysis
+
+&lt;img src="images/pca_fishes.jpg" height="400px"&gt;
+
+.footnote[
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4245084
+]
+
+---
+
+## Distribution of read counts has heavy tail
+
+
+```r
+hist(exprs(es[,1]), breaks=100)
+```
+
+![](rnaseq1_files/figure-html/unnamed-chunk-12-1.png)&lt;!-- --&gt;
+
+---
+
+## Going log-scale
+
+
+```r
+hist(log2(exprs(es))[,1], breaks=100)
+```
+
+![](rnaseq1_files/figure-html/unnamed-chunk-13-1.png)&lt;!-- --&gt;
+
+---
+
+## Going log-scale properly
+
+
+```r
+rld &lt;- rlog(dds)
+summary(assay(rld))
+```
+
+```
+##  ShamP56_Myo_1     ShamP56_Myo_2     ShamP56_Myo_3     ShamP56_Myo_4    
+##  Min.   :-2.1052   Min.   :-2.1070   Min.   :-2.1055   Min.   :-2.1100  
+##  1st Qu.: 0.0000   1st Qu.: 0.0000   1st Qu.: 0.0000   1st Qu.: 0.0000  
+##  Median : 0.8585   Median : 0.8501   Median : 0.8595   Median : 0.8521  
+##  Mean   : 3.3174   Mean   : 3.3273   Mean   : 3.3311   Mean   : 3.3158  
+##  3rd Qu.: 7.4533   3rd Qu.: 7.4784   3rd Qu.: 7.4746   3rd Qu.: 7.4704  
+##  Max.   :20.2318   Max.   :20.4535   Max.   :20.1897   Max.   :20.3314  
+##   MIP56_Myo_1       MIP56_Myo_2      MIP56_Myo_3       MIP56_Myo_4     
+##  Min.   :-2.1090   Min.   :-2.109   Min.   :-2.1130   Min.   :-2.1084  
+##  1st Qu.: 0.0000   1st Qu.: 0.000   1st Qu.: 0.0000   1st Qu.: 0.0000  
+##  Median : 0.8717   Median : 0.857   Median : 0.8923   Median : 0.8616  
+##  Mean   : 3.3215   Mean   : 3.319   Mean   : 3.3410   Mean   : 3.3300  
+##  3rd Qu.: 7.4225   3rd Qu.: 7.430   3rd Qu.: 7.5299   3rd Qu.: 7.4522  
+##  Max.   :19.5913   Max.   :20.111   Max.   :19.8336   Max.   :19.9830
+```
+
+
+---
+
+## Doing PCA plot
+
+
+```r
+plotPCA(rld)
+```
+
+![](rnaseq1_files/figure-html/unnamed-chunk-14-1.png)&lt;!-- --&gt;
+
+---
+
+## ggplot2 package
+
+
+```r
+ggplot(data=mtcars, aes(x=mpg, y=hp, color = as.factor(gear))) + 
+    geom_point()
+```
+
+![](rnaseq1_files/figure-html/ggplot2-1-1.svg)&lt;!-- --&gt;
+
+
+---
+
+## Fancier PCA plot
+  
+
+```r
+plotPCA(rld) + geom_text_repel(aes(label=name)) + theme_classic()
+```
+
+![](rnaseq1_files/figure-html/unnamed-chunk-15-1.png)&lt;!-- --&gt;
+
+
+---
+
+## Filtering outliers
+
+
+```r
+outliers &lt;- c("MIP56_Myo_3")
+
+es.filtered &lt;- es[, !es$title %in% outliers]
+
+dds &lt;- DESeqDataSetFromMatrix(exprs(es.filtered), 
+                              pData(es.filtered),
+                              ~condition)
+```
+
+```
+## converting counts to integer mode
+```
+
+```
+## Warning in DESeqDataSet(se, design = design, ignoreRank): some variables in
+## design formula are characters, converting to factors
+```
+
+---
+
+## Redoing PCA
+
+
+```r
+rld &lt;- rlog(dds)
+
+plotPCA(rld) + geom_text_repel(aes(label=name)) + theme_classic()
+```
+
+![](rnaseq1_files/figure-html/rlog-filtered-1.png)&lt;!-- --&gt;
+
+---
+
+## Saving normalized log-scale data for later
+
+
+```r
+es.norm &lt;- es.filtered
+exprs(es.norm) &lt;- assay(rld)
+```
+
+---
+
+## DESeq2 main step
+  
+
+```r
+dds &lt;- DESeq(dds)
+```
+
+```
+## estimating size factors
+```
+
+```
+## estimating dispersions
+```
+
+```
+## gene-wise dispersion estimates
+```
+
+```
+## mean-dispersion relationship
+```
+
+```
+## final dispersion estimates
+```
+
+```
+## fitting model and testing
+```
+
+---
+
+## DESeq2 corrects mean-dispersion dependency
+
+
+```r
+plotDispEsts(dds)
+```
+
+![](rnaseq1_files/figure-html/unnamed-chunk-17-1.png)&lt;!-- --&gt;
+
+---
+
+## Doing differential expression
+
+* `log2FoldChange` = `MIP56` - `ShamP56`
+
+
+```r
+de &lt;- results(dds, contrast = c("condition", "MIP56", "ShamP56"),
+              cooksCutoff = F)
+de
+```
+
+```
+## log2 fold change (MLE): condition MIP56 vs ShamP56 
+## Wald test p-value: condition MIP56 vs ShamP56 
+## DataFrame with 32544 rows and 6 columns
+##                       baseMean     log2FoldChange             lfcSE
+##                      &lt;numeric&gt;          &lt;numeric&gt;         &lt;numeric&gt;
+## 0610007P14Rik 60.5604714463298  0.353212133723212 0.305641038650782
+## 0610009B22Rik 240.941615412603  -1.03364943481999 0.319213391243654
+## 0610009L18Rik 133.137672481754 -0.156378969876722 0.276919164945624
+## 0610009O20Rik 2944.81995848089 -0.269142768454769 0.150451502595867
+## 0610010F05Rik 155.680996012037  -1.12732473838158 0.275052529983098
+## ...                        ...                ...               ...
+## mt-Nd3        8463.72886746799  0.262537528093979 0.306247611511174
+## mt-Nd4        36160.6182847172 -0.528383194400019 0.201144407714075
+## mt-Nd4l        1505.7375229394 -0.581636470374165 0.270271652283012
+## mt-Nd5        25725.2909388072 -0.805921479634972 0.218545105711177
+## mt-Nd6        3230.73719795104  -1.15244691343143 0.269876383917115
+##                             stat               pvalue                 padj
+##                        &lt;numeric&gt;            &lt;numeric&gt;            &lt;numeric&gt;
+## 0610007P14Rik    1.1556436769173    0.247826934917486    0.491406511303538
+## 0610009B22Rik  -3.23811426203925  0.00120322609176885   0.0112389412070299
+## 0610009L18Rik -0.564709813087257     0.57227115850031     0.77827253431928
+## 0610009O20Rik  -1.78890050156377   0.0736308410209251    0.228648165481216
+## 0610010F05Rik  -4.09857978201783 4.15692953697495e-05 0.000813905485752326
+## ...                          ...                  ...                  ...
+## mt-Nd3         0.857272083849053    0.391294532828936    0.638172800658213
+## mt-Nd4         -2.62688483565056   0.0086170492371591   0.0495107509217057
+## mt-Nd4l        -2.15204393602149   0.0313938941037575    0.127005973709294
+## mt-Nd5         -3.68766656664485 0.000226319943803553  0.00311589286156072
+## mt-Nd6         -4.27027699387498 1.95230345846493e-05 0.000455199670498876
+```
+
+
+---
+
+## Converting to `data.table`
+
+* Same as `data.frame` but more consise and interactive
+
+```r
+de &lt;- data.table(ID=rownames(de), as.data.table(de))
+de[order(pvalue), ]
+```
+
+```
+##             ID  baseMean log2FoldChange     lfcSE      stat       pvalue
+##     1:     Tnc  649.2282       6.591140 0.4413460  14.93418 1.974930e-50
+##     2:    Lcn2 1668.6964       5.066945 0.3514142  14.41873 3.945549e-47
+##     3:    Spp1  395.0282       9.407404 0.7119401  13.21376 7.308296e-40
+##     4:    Saa3  236.8128       4.247947 0.3320303  12.79385 1.774524e-37
+##     5:  Gm4070  409.2667      -3.600533 0.2896384 -12.43113 1.771110e-35
+##    ---                                                                  
+## 32540: Zscan4b    0.0000             NA        NA        NA           NA
+## 32541: Zscan4c    0.0000             NA        NA        NA           NA
+## 32542: Zscan4e    0.0000             NA        NA        NA           NA
+## 32543: Zscan4f    0.0000             NA        NA        NA           NA
+## 32544:  Zswim2    0.0000             NA        NA        NA           NA
+##                padj
+##     1: 3.016113e-46
+##     2: 3.012821e-43
+##     3: 3.720410e-36
+##     4: 6.775131e-34
+##     5: 5.409679e-32
+##    ---             
+## 32540:           NA
+## 32541:           NA
+## 32542:           NA
+## 32543:           NA
+## 32544:           NA
+```
+
+
+
+---
+
+## Multiple hyptotheses testing correction
+
+.pull-left[
+* Bonferroni (family-wise error rate, FWER)
+* Benjamini-Hochber (false discovery rate, FDR)
+]
+
+.pull-right[
+&lt;img src="images/significant.png" height="450px"&gt;
+]
+
+.footnote[
+https://xkcd.com/882/
+]
+---
+
+## Exercise
+  
+* How many genes have adjusted P-value less than 0.01?
+
+Answer:
+&lt;span style="color:white"&gt;
+1557
+&lt;/span&gt;
+
+--
+
+* How many genes have adjusted P-value less than 0.01 _and_ absolute 
+log fold change higher then 1?
+
+Answer:
+&lt;span style="color:white"&gt;
+1043
+&lt;/span&gt;
+
+
+---
+
+## Converting identifiers
+
+* It's helpful to have Entrez IDs of the genes
+
+
+```r
+de$entrez &lt;- mapIds(org.Mm.eg.db, keys = de$ID,
+                    keytype = "SYMBOL", column = "ENTREZID")
+head(de)
+```
+
+```
+##               ID   baseMean log2FoldChange     lfcSE       stat
+## 1: 0610007P14Rik   60.56047      0.3532121 0.3056410  1.1556437
+## 2: 0610009B22Rik  240.94162     -1.0336494 0.3192134 -3.2381143
+## 3: 0610009L18Rik  133.13767     -0.1563790 0.2769192 -0.5647098
+## 4: 0610009O20Rik 2944.81996     -0.2691428 0.1504515 -1.7889005
+## 5: 0610010F05Rik  155.68100     -1.1273247 0.2750525 -4.0985798
+## 6: 0610010K14Rik  168.36081      0.1198970 0.2385637  0.5025785
+##          pvalue         padj entrez
+## 1: 0.2478269349 0.4914065113   &lt;NA&gt;
+## 2: 0.0012032261 0.0112389412  66050
+## 3: 0.5722711585 0.7782725343  66838
+## 4: 0.0736308410 0.2286481655  66839
+## 5: 0.0000415693 0.0008139055  71675
+## 6: 0.6152606162 0.8068922397 104457
+```
+  
+---
+
+## Filtering top expressed genes
+
+
+```r
+de.top12K &lt;- head(de[order(baseMean, decreasing = TRUE), ][
+                !duplicated(entrez) &amp; !is.na(entrez), ], 12000)
+de.top12K &lt;- de.top12K[order(stat)]
+de.top12K
+```
+
+```
+##            ID  baseMean log2FoldChange     lfcSE       stat       pvalue
+##     1: Gm4070  409.2667      -3.600533 0.2896384 -12.431131 1.771110e-35
+##     2:   Gbp7  139.8028      -2.313248 0.3084750  -7.498981 6.431608e-14
+##     3:   Nexn 2179.5837      -1.867417 0.2550470  -7.321853 2.445702e-13
+##     4: Cacybp  561.5728      -1.981729 0.2732066  -7.253591 4.058657e-13
+##     5:   Slf1  359.3341      -1.950083 0.2757371  -7.072254 1.524373e-12
+##    ---                                                                  
+## 11996:  Timp1  245.4693       6.033621 0.4986274  12.100461 1.050193e-33
+## 11997:   Saa3  236.8128       4.247947 0.3320303  12.793853 1.774524e-37
+## 11998:   Spp1  395.0282       9.407404 0.7119401  13.213758 7.308296e-40
+## 11999:   Lcn2 1668.6964       5.066945 0.3514142  14.418727 3.945549e-47
+## 12000:    Tnc  649.2282       6.591140 0.4413460  14.934178 1.974930e-50
+##                padj    entrez
+##     1: 5.409679e-32 100042856
+##     2: 3.387018e-11    229900
+##     3: 1.098552e-10     68810
+##     4: 1.675238e-10     12301
+##     5: 5.969289e-10    105377
+##    ---                       
+## 11996: 2.673091e-30     21857
+## 11997: 6.775131e-34     20210
+## 11998: 3.720410e-36     20750
+## 11999: 3.012821e-43     16819
+## 12000: 3.016113e-46     21923
+```
+
+---
+
+## Saving the results
+
+
+```r
+dir.create("work", showWarnings = FALSE)
+fwrite(de.top12K, file="./work/ShamP56.vs.MIP56.de.tsv", sep="\t")
+```
+
+---
+
+## pheatmap: visualyzing matrices as heatmaps
+
+
+```r
+m &lt;- matrix(rnorm(200), 20, 10)
+pheatmap(m)
+```
+
+![](rnaseq1_files/figure-html/pheatmap-1.svg)&lt;!-- --&gt;
+
+---
+
+## Top regulated genes heatmap
+
+
+```r
+genes &lt;- de.top12K[order(stat), c(head(ID), tail(ID))]
+heatmap_table &lt;- exprs(es.norm)[genes, ]
+heatmap_table &lt;- t(apply(heatmap_table, 1, scales::rescale))
+pheatmap(heatmap_table, 
+         cluster_rows = FALSE, cluster_cols = FALSE)
+```
+
+![](rnaseq1_files/figure-html/top-heatmap-1.svg)&lt;!-- --&gt;
+
+---
+
+## Gene Set Enrichment Analysis (GSEA)
+
+&lt;img src="images/gsea.png" height="500px"&gt;
+
+---
+
+## Creating gene ranking
+
+
+
+```r
+stats &lt;- setNames(de.top12K$stat, de.top12K$entrez)
+
+str(stats)
+```
+
+```
+##  Named num [1:12000] -12.43 -7.5 -7.32 -7.25 -7.07 ...
+##  - attr(*, "names")= chr [1:12000] "100042856" "229900" "68810" "12301" ...
+```
+
+---
+  
+## Getting pathays from MSigDB
+
+
+```r
+# Hallmark pathways from MSigDB
+m_df &lt;- msigdbr(species = "Mus musculus", category = "H")
+m_df
+```
+
+```
+## # A tibble: 7,392 x 9
+##    gs_name gs_id gs_cat gs_subcat human_gene_symb… species_name entrez_gene
+##    &lt;chr&gt;   &lt;chr&gt; &lt;chr&gt;  &lt;chr&gt;     &lt;chr&gt;            &lt;chr&gt;              &lt;int&gt;
+##  1 HALLMA… M5905 H      ""        ABCA1            Mus musculus       11303
+##  2 HALLMA… M5905 H      ""        ABCB8            Mus musculus       74610
+##  3 HALLMA… M5905 H      ""        ACAA2            Mus musculus       52538
+##  4 HALLMA… M5905 H      ""        ACADL            Mus musculus       11363
+##  5 HALLMA… M5905 H      ""        ACADM            Mus musculus       11364
+##  6 HALLMA… M5905 H      ""        ACADS            Mus musculus       11409
+##  7 HALLMA… M5905 H      ""        ACLY             Mus musculus      104112
+##  8 HALLMA… M5905 H      ""        ACO2             Mus musculus       11429
+##  9 HALLMA… M5905 H      ""        ACOX1            Mus musculus       11430
+## 10 HALLMA… M5905 H      ""        ADCY6            Mus musculus       11512
+## # … with 7,382 more rows, and 2 more variables: gene_symbol &lt;chr&gt;,
+## #   sources &lt;chr&gt;
+```
+
+```r
+pathways &lt;- split(m_df$entrez_gene, m_df$gs_name)
+pathways &lt;- lapply(pathways, unique)
+```
+---
+
+## Running GSEA
+
+
+```r
+fr &lt;- fgseaMultilevel(pathways, stats = stats, minSize=15, maxSize=500)
+```
+
+```
+## Warning in fgseaMultilevel(pathways, stats = stats, minSize = 15, maxSize = 500): There are ties in the preranked stats (0.08% of the list).
+## The order of those tied genes will be arbitrary, which may produce unexpected results.
+```
+
+```r
+head(fr)
+```
+
+```
+##                         pathway         pval         padj   log2err
+## 1:        HALLMARK_ADIPOGENESIS 3.211679e-02 4.917883e-02 0.3153215
+## 2: HALLMARK_ALLOGRAFT_REJECTION 1.201754e-04 2.944297e-04 0.5384341
+## 3:   HALLMARK_ANDROGEN_RESPONSE 2.547425e-01 3.120596e-01 0.1428939
+## 4:        HALLMARK_ANGIOGENESIS 4.390088e-05 1.132181e-04 0.5573322
+## 5:     HALLMARK_APICAL_JUNCTION 1.664386e-07 9.061658e-07 0.6901325
+## 6:      HALLMARK_APICAL_SURFACE 1.704208e-02 3.211776e-02 0.3524879
+##            ES       NES size                              leadingEdge
+## 1: -0.2920919 -1.318802  188 11770,13382,227095,12675,18569,68202,...
+## 2:  0.3908760  1.775957  122  21857,12332,16176,20306,12768,21808,...
+## 3:  0.2573540  1.107723   88 16691,16669,109711,19229,14595,74754,...
+## 4:  0.6295600  2.130751   29  20750,21857,20198,12825,50706,12832,...
+## 5:  0.4291573  2.012863  147 11465,19354,109711,20563,17698,13003,...
+## 6:  0.4627011  1.564594   30  18793,14595,72043,15507,14252,20312,...
+```
+
+---
+
+## Selecting significantly enriched pathways
+
+
+```r
+frSig &lt;- fr[padj &lt; 0.01][order(pval)]
+head(frSig)
+```
+
+```
+##                                       pathway         pval         padj
+## 1: HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION 2.143292e-28 1.050213e-26
+## 2:           HALLMARK_TNFA_SIGNALING_VIA_NFKB 1.217667e-10 2.983284e-09
+## 3:                 HALLMARK_KRAS_SIGNALING_UP 2.698289e-10 4.407206e-09
+## 4:                       HALLMARK_COAGULATION 7.080210e-10 8.673257e-09
+## 5:                        HALLMARK_COMPLEMENT 9.051355e-10 8.870328e-09
+## 6:           HALLMARK_IL6_JAK_STAT3_SIGNALING 2.353549e-09 1.922065e-08
+##      log2err        ES      NES size
+## 1: 1.3802649 0.6545046 3.121777  161
+## 2: 0.8266573 0.4881649 2.299111  152
+## 3: 0.8140358 0.4838292 2.272748  149
+## 4: 0.8012156 0.5645321 2.410677   85
+## 5: 0.8012156 0.4806875 2.232354  142
+## 6: 0.7749390 0.6232815 2.470873   60
+##                                leadingEdge
+## 1: 21923,20750,21857,14268,16948,12816,...
+## 2: 21923,12505,20971,56336,16176,12702,...
+## 3: 20750,11501,93695,11846,19378,20568,...
+## 4: 21857,14268,21825,12759,14962,14058,...
+## 5: 21857,14268,16854,16409,12759,14962,...
+## 6: 15368,12505,16176,12702,20306,12475,...
+```
+
+
+---
+
+## Enrichment plot
+
+
+
+```r
+plotEnrichment(pathways$`HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION`, stats) +
+    ggtitle("Epythelial-mesenchymal transition")
+```
+
+![](rnaseq1_files/figure-html/gseaPlot-1.svg)&lt;!-- --&gt;
+
+---
+
+## Enrichment table
+
+
+```r
+plotGseaTable(pathways[fr[padj &lt; 0.01][order(NES), pathway]], stats, fr)
+```
+
+![](rnaseq1_files/figure-html/gseaTable-1.svg)&lt;!-- --&gt;
+  
+---
+
+## Saving the results
+
+
+```r
+fr[, leadingEdge := mapIdsList(keys=leadingEdge,
+                               x=org.Mm.eg.db, 
+                               keytype="ENTREZID", 
+                               column="SYMBOL")]
+```
+
+```
+## 'select()' returned 1:1 mapping between keys and columns
+```
+
+```r
+fwrite(fr, file="./work/ShamP56.vs.MIP56.gsea.tsv", 
+       sep="\t", sep2=c("", " ", ""))
+```
+
+---
+
+## Summary
+
+* Use `rlog` normalization for visualization and non-specialized statistical analysis
+* PCA plot for finding outlier
+* `DESeq2` for differential expression
+* `fgsea` for pathway analysis
+    </textarea>
+<script src="libs/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+"highlightStyle": "github",
+"highlightLines": true,
+"countIncrementalSlides": false,
+"ratio": "16:10"
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function() {
+  var d = document, s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})();</script>
+
+<script>
+(function() {
+  var i, text, code, codes = document.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+})();
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://cdn.bootcss.com/mathjax/2.7.1/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>
